@@ -1,0 +1,776 @@
+import { z } from 'zod';
+import { router, publicProcedure, protectedProcedure, superAdminProcedure } from '../trpc.js';
+import { orgsRouter } from './orgs.js';
+import { usersRouter } from './users.js';
+import { salesRouter } from './sales.js';
+import { db } from '../db.js';
+import { products, customers, suppliers, chartOfAccounts, warehouses, branches, units, productGroups, journalEntries, journalEntryLines, vouchers, inventory, stockVouchers, stockVoucherItems, inventoryCounts, inventoryCountItems } from '../schema.js';
+import { eq, and, desc, like, or, sql } from 'drizzle-orm';
+
+export const appRouter = router({
+  // ─── Auth ────────────────────────────────────────────────────────────────────
+  auth: router({
+    me: publicProcedure.query(async ({ ctx }) => {
+      return ctx.user ? {
+        id: ctx.user.id,
+        name: ctx.user.name,
+        username: ctx.user.username,
+        role: ctx.user.role,
+        orgId: ctx.user.orgId,
+      } : null;
+    }),
+  }),
+
+  // ─── Organizations ────────────────────────────────────────────────────────────
+  orgs: orgsRouter,
+
+  // ─── Users ───────────────────────────────────────────────────────────────────
+  users: usersRouter,
+
+  // ─── Sales ───────────────────────────────────────────────────────────────────
+  sales: salesRouter,
+
+  // ─── Products ────────────────────────────────────────────────────────────────
+  products: router({
+    list: protectedProcedure
+      .input(z.object({
+        search: z.string().optional(),
+        categoryId: z.number().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const conditions = [eq(products.orgId, ctx.user.orgId), eq(products.isActive, true)];
+        if (input?.search) {
+          conditions.push(or(
+            like(products.name, `%${input.search}%`),
+            like(products.code, `%${input.search}%`),
+            like(products.barcode, `%${input.search}%`)
+          ) as any);
+        }
+        if (input?.categoryId) {
+          conditions.push(eq(products.groupId, input.categoryId));
+        }
+        return db.query.products.findMany({
+          where: and(...conditions),
+          orderBy: (p, { asc }) => [asc(p.name)],
+        });
+      }),
+    search: protectedProcedure
+      .input(z.object({ q: z.string() }))
+      .query(async ({ ctx, input }) => {
+        return db.query.products.findMany({
+          where: and(
+            eq(products.orgId, ctx.user.orgId),
+            eq(products.isActive, true),
+            or(like(products.name, `%${input.q}%`), like(products.code, `%${input.q}%`))
+          ),
+          limit: 20,
+        });
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        name2: z.string().optional(),
+        nameEn: z.string().optional(),
+        sku: z.string().optional(),
+        barcode: z.string().optional(),
+        barcode2: z.string().optional(),
+        barcode3: z.string().optional(),
+        groupId: z.number().optional(),
+        categoryId: z.number().optional(),
+        unit: z.string().optional(),
+        unit2: z.string().optional(),
+        unit3: z.string().optional(),
+        salePrice: z.string().optional(),
+        salePrice2: z.string().optional(),
+        salePrice3: z.string().optional(),
+        salePrice4: z.string().optional(),
+        salePrice5: z.string().optional(),
+        wholesalePrice: z.string().optional(),
+        purchasePrice: z.string().optional(),
+        costPrice: z.string().optional(),
+        vatRate: z.string().optional(),
+        taxRate: z.string().optional(),
+        taxable: z.boolean().optional(),
+        taxType: z.string().optional(),
+        minStock: z.number().optional(),
+        maxStock: z.number().optional(),
+        reorderPoint: z.number().optional(),
+        itemType: z.string().optional(),
+        brand: z.string().optional(),
+        model: z.string().optional(),
+        description: z.string().optional(),
+        notes: z.string().optional(),
+      }).passthrough())
+      .mutation(async ({ ctx, input }) => {
+        const { sku, name2, nameEn, categoryId, costPrice, vatRate, taxable, taxType,
+          barcode2, barcode3, unit2, unit3, salePrice2, salePrice3, salePrice4, salePrice5,
+          wholesalePrice, maxStock, reorderPoint, itemType, brand, model, description,
+          ...rest } = input as any;
+
+        const extraData: Record<string, any> = {};
+        if (name2) extraData.name2 = name2;
+        if (barcode2) extraData.barcode2 = barcode2;
+        if (barcode3) extraData.barcode3 = barcode3;
+        if (unit2) extraData.unit2 = unit2;
+        if (unit3) extraData.unit3 = unit3;
+        if (salePrice2) extraData.salePrice2 = salePrice2;
+        if (salePrice3) extraData.salePrice3 = salePrice3;
+        if (salePrice4) extraData.salePrice4 = salePrice4;
+        if (salePrice5) extraData.salePrice5 = salePrice5;
+        if (wholesalePrice) extraData.wholesalePrice = wholesalePrice;
+        if (maxStock !== undefined) extraData.maxStock = maxStock;
+        if (reorderPoint !== undefined) extraData.reorderPoint = reorderPoint;
+        if (taxable !== undefined) extraData.taxable = taxable;
+        if (taxType) extraData.taxType = taxType;
+        if (itemType) extraData.itemType = itemType;
+        if (brand) extraData.brand = brand;
+        if (model) extraData.model = model;
+
+        const notesStr = description
+          ? (Object.keys(extraData).length ? `${description}\n---\n${JSON.stringify(extraData)}` : description)
+          : (Object.keys(extraData).length ? JSON.stringify(extraData) : rest.notes);
+
+        const [p] = await db.insert(products).values({
+          code: sku || rest.code,
+          name: rest.name,
+          nameEn: nameEn || name2,
+          barcode: rest.barcode,
+          groupId: rest.groupId || categoryId,
+          unit: rest.unit,
+          salePrice: rest.salePrice || '0',
+          purchasePrice: costPrice || rest.purchasePrice || '0',
+          taxRate: vatRate || rest.taxRate || '0',
+          minStock: rest.minStock !== undefined ? String(rest.minStock) : '0',
+          isActive: true,
+          notes: notesStr,
+          orgId: ctx.user.orgId,
+        }).returning();
+        return p;
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        name2: z.string().optional(),
+        nameEn: z.string().optional(),
+        sku: z.string().optional(),
+        barcode: z.string().optional(),
+        barcode2: z.string().optional(),
+        barcode3: z.string().optional(),
+        groupId: z.number().optional(),
+        categoryId: z.number().optional(),
+        unit: z.string().optional(),
+        unit2: z.string().optional(),
+        unit3: z.string().optional(),
+        salePrice: z.string().optional(),
+        salePrice2: z.string().optional(),
+        salePrice3: z.string().optional(),
+        salePrice4: z.string().optional(),
+        salePrice5: z.string().optional(),
+        wholesalePrice: z.string().optional(),
+        purchasePrice: z.string().optional(),
+        costPrice: z.string().optional(),
+        vatRate: z.string().optional(),
+        taxRate: z.string().optional(),
+        taxable: z.boolean().optional(),
+        taxType: z.string().optional(),
+        minStock: z.number().optional(),
+        maxStock: z.number().optional(),
+        reorderPoint: z.number().optional(),
+        itemType: z.string().optional(),
+        brand: z.string().optional(),
+        model: z.string().optional(),
+        description: z.string().optional(),
+        isActive: z.boolean().optional(),
+        notes: z.string().optional(),
+      }).passthrough())
+      .mutation(async ({ ctx, input }) => {
+        const { id, sku, name2, nameEn, categoryId, costPrice, vatRate, taxable, taxType,
+          barcode2, barcode3, unit2, unit3, salePrice2, salePrice3, salePrice4, salePrice5,
+          wholesalePrice, maxStock, reorderPoint, itemType, brand, model, description,
+          ...rest } = input as any;
+
+        const extraData: Record<string, any> = {};
+        if (name2 !== undefined) extraData.name2 = name2;
+        if (barcode2 !== undefined) extraData.barcode2 = barcode2;
+        if (barcode3 !== undefined) extraData.barcode3 = barcode3;
+        if (unit2 !== undefined) extraData.unit2 = unit2;
+        if (unit3 !== undefined) extraData.unit3 = unit3;
+        if (salePrice2 !== undefined) extraData.salePrice2 = salePrice2;
+        if (salePrice3 !== undefined) extraData.salePrice3 = salePrice3;
+        if (salePrice4 !== undefined) extraData.salePrice4 = salePrice4;
+        if (salePrice5 !== undefined) extraData.salePrice5 = salePrice5;
+        if (wholesalePrice !== undefined) extraData.wholesalePrice = wholesalePrice;
+        if (maxStock !== undefined) extraData.maxStock = maxStock;
+        if (reorderPoint !== undefined) extraData.reorderPoint = reorderPoint;
+        if (taxable !== undefined) extraData.taxable = taxable;
+        if (taxType !== undefined) extraData.taxType = taxType;
+        if (itemType !== undefined) extraData.itemType = itemType;
+        if (brand !== undefined) extraData.brand = brand;
+        if (model !== undefined) extraData.model = model;
+
+        const notesStr = description
+          ? (Object.keys(extraData).length ? `${description}\n---\n${JSON.stringify(extraData)}` : description)
+          : (Object.keys(extraData).length ? JSON.stringify(extraData) : rest.notes);
+
+        const updateData: Record<string, any> = {};
+        if (rest.name !== undefined) updateData.name = rest.name;
+        if (nameEn !== undefined || name2 !== undefined) updateData.nameEn = nameEn || name2;
+        if (sku !== undefined || rest.code !== undefined) updateData.code = sku || rest.code;
+        if (rest.barcode !== undefined) updateData.barcode = rest.barcode;
+        if (rest.groupId !== undefined || categoryId !== undefined) updateData.groupId = rest.groupId || categoryId;
+        if (rest.unit !== undefined) updateData.unit = rest.unit;
+        if (rest.salePrice !== undefined) updateData.salePrice = rest.salePrice;
+        if (costPrice !== undefined || rest.purchasePrice !== undefined) updateData.purchasePrice = costPrice || rest.purchasePrice;
+        if (vatRate !== undefined || rest.taxRate !== undefined) updateData.taxRate = vatRate || rest.taxRate;
+        if (rest.minStock !== undefined) updateData.minStock = String(rest.minStock);
+        if (rest.isActive !== undefined) updateData.isActive = rest.isActive;
+        if (notesStr !== undefined) updateData.notes = notesStr;
+
+        await db.update(products).set(updateData as any)
+          .where(and(eq(products.id, id), eq(products.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.update(products).set({ isActive: false } as any)
+          .where(and(eq(products.id, input.id), eq(products.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Categories (Product Groups used as categories) ───────────────────────────
+  categories: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.productGroups.findMany({
+        where: eq(productGroups.orgId, ctx.user.orgId),
+        orderBy: (g, { asc }) => [asc(g.name)],
+      });
+    }),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().min(1), parentId: z.number().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const [g] = await db.insert(productGroups).values({
+          orgId: ctx.user.orgId,
+          name: input.name,
+          parentId: input.parentId,
+        }).returning();
+        return g;
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.delete(productGroups)
+          .where(and(eq(productGroups.id, input.id), eq(productGroups.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Product Groups ───────────────────────────────────────────────────────────
+  productGroups: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.productGroups.findMany({
+        where: eq(productGroups.orgId, ctx.user.orgId),
+        orderBy: (g, { asc }) => [asc(g.name)],
+      });
+    }),
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        groupCode: z.string().optional(),
+        description: z.string().optional(),
+        parentId: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const [g] = await db.insert(productGroups).values({ ...input, orgId: ctx.user.orgId }).returning();
+        return g;
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        groupCode: z.string().optional(),
+        description: z.string().optional(),
+        parentId: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        await db.update(productGroups).set(data as any).where(and(eq(productGroups.id, id), eq(productGroups.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.delete(productGroups)
+          .where(and(eq(productGroups.id, input.id), eq(productGroups.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Customers ───────────────────────────────────────────────────────────────
+  customers: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.customers.findMany({
+        where: and(eq(customers.orgId, ctx.user.orgId), eq(customers.isActive, true)),
+        orderBy: (c, { asc }) => [asc(c.name)],
+      });
+    }),
+    create: protectedProcedure
+      .input(z.object({
+        code: z.string().optional(),
+        name: z.string().min(1),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        address: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const [c] = await db.insert(customers).values({
+          ...input,
+          orgId: ctx.user.orgId,
+          isActive: true,
+        }).returning();
+        return c;
+      }),
+  }),
+
+  // ─── Suppliers ───────────────────────────────────────────────────────────────
+  suppliers: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.suppliers.findMany({
+        where: and(eq(suppliers.orgId, ctx.user.orgId), eq(suppliers.isActive, true)),
+        orderBy: (s, { asc }) => [asc(s.name)],
+      });
+    }),
+  }),
+
+  // ─── Chart of Accounts ───────────────────────────────────────────────────────
+  accounts: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.chartOfAccounts.findMany({
+        where: and(eq(chartOfAccounts.orgId, ctx.user.orgId), eq(chartOfAccounts.isActive, true)),
+        orderBy: (a, { asc }) => [asc(a.code)],
+      });
+    }),
+  }),
+
+  // ─── Journal Entries ─────────────────────────────────────────────────────────
+  journal: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.journalEntries.findMany({
+        where: eq(journalEntries.orgId, ctx.user.orgId),
+        orderBy: [desc(journalEntries.createdAt)],
+        limit: 100,
+      });
+    }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const entry = await db.query.journalEntries.findFirst({
+          where: and(eq(journalEntries.id, input.id), eq(journalEntries.orgId, ctx.user.orgId)),
+        });
+        if (!entry) throw new Error('القيد غير موجود');
+        const lines = await db.query.journalEntryLines.findMany({
+          where: eq(journalEntryLines.entryId, input.id),
+          orderBy: (l, { asc }) => [asc(l.sortOrder)],
+        });
+        return { ...entry, lines };
+      }),
+    nextNumber: protectedProcedure.query(async ({ ctx }) => {
+      const last = await db.query.journalEntries.findFirst({
+        where: eq(journalEntries.orgId, ctx.user.orgId),
+        orderBy: [desc(journalEntries.id)],
+      });
+      const num = last ? parseInt(last.entryNumber.replace(/\D/g, '') || '0') + 1 : 1;
+      return `JE-${String(num).padStart(4, '0')}`;
+    }),
+    create: protectedProcedure
+      .input(z.object({
+        entryNumber: z.string(),
+        entryDate: z.string(),
+        description: z.string().optional(),
+        reference: z.string().optional(),
+        totalDebit: z.string(),
+        totalCredit: z.string(),
+        lines: z.array(z.object({
+          accountId: z.number().optional(),
+          accountCode: z.string().optional(),
+          accountName: z.string().optional(),
+          description: z.string().optional(),
+          debit: z.string().default('0'),
+          credit: z.string().default('0'),
+          sortOrder: z.number().optional(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { lines, entryDate, ...rest } = input;
+        const [entry] = await db.insert(journalEntries).values({
+          ...rest,
+          orgId: ctx.user.orgId,
+          userId: ctx.user.id,
+          entryDate: new Date(entryDate),
+          status: 'posted',
+        }).returning();
+        if (lines.length > 0) {
+          await db.insert(journalEntryLines).values(
+            lines.map((l, i) => ({ ...l, entryId: entry.id, orgId: ctx.user.orgId, sortOrder: l.sortOrder ?? i }))
+          );
+        }
+        return entry;
+      }),
+  }),
+
+  // ─── Vouchers ────────────────────────────────────────────────────────────────
+  vouchers: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.vouchers.findMany({
+        where: eq(vouchers.orgId, ctx.user.orgId),
+        orderBy: [desc(vouchers.createdAt)],
+        limit: 100,
+      });
+    }),
+    nextNumber: protectedProcedure
+      .input(z.object({ type: z.enum(['receipt', 'payment']) }))
+      .query(async ({ ctx, input }) => {
+        const last = await db.query.vouchers.findFirst({
+          where: and(eq(vouchers.orgId, ctx.user.orgId), eq(vouchers.voucherType, input.type)),
+          orderBy: [desc(vouchers.id)],
+        });
+        const prefix = input.type === 'receipt' ? 'RV' : 'PV';
+        const num = last ? parseInt(last.voucherNumber.replace(/\D/g, '') || '0') + 1 : 1;
+        return `${prefix}-${String(num).padStart(4, '0')}`;
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        voucherNumber: z.string(),
+        voucherType: z.enum(['receipt', 'payment']),
+        voucherDate: z.string(),
+        amount: z.string(),
+        paymentMethod: z.enum(['cash', 'bank', 'credit', 'check', 'other']).default('cash'),
+        accountCode: z.string().optional(),
+        accountName: z.string().optional(),
+        partyType: z.string().optional(),
+        partyName: z.string().optional(),
+        description: z.string().optional(),
+        reference: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const [v] = await db.insert(vouchers).values({
+          ...input,
+          orgId: ctx.user.orgId,
+          userId: ctx.user.id,
+          voucherDate: new Date(input.voucherDate),
+          status: 'posted',
+        }).returning();
+        return v;
+      }),
+  }),
+
+  // ─── Branches ────────────────────────────────────────────────────────────────
+  branches: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.branches.findMany({
+        where: and(eq(branches.orgId, ctx.user.orgId), eq(branches.isActive, true)),
+        orderBy: (b, { asc }) => [asc(b.name)],
+      });
+    }),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().min(1), address: z.string().optional(), phone: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const [b] = await db.insert(branches).values({ ...input, orgId: ctx.user.orgId, isActive: true }).returning();
+        return b;
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), name: z.string().min(1).optional(), address: z.string().optional(), phone: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        await db.update(branches).set(data as any).where(and(eq(branches.id, id), eq(branches.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Warehouses ──────────────────────────────────────────────────────────────
+  warehouses: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.warehouses.findMany({
+        where: and(eq(warehouses.orgId, ctx.user.orgId), eq(warehouses.isActive, true)),
+        orderBy: (w, { asc }) => [asc(w.name)],
+      });
+    }),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().min(1), branchId: z.number().optional(), description: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { description, ...rest } = input;
+        const [w] = await db.insert(warehouses).values({ ...rest, address: description, orgId: ctx.user.orgId, isActive: true }).returning();
+        return w;
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), name: z.string().optional(), description: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, description, ...rest } = input;
+        await db.update(warehouses).set({ ...rest, address: description } as any).where(and(eq(warehouses.id, id), eq(warehouses.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Units ───────────────────────────────────────────────────────────────────
+  units: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.units.findMany({ where: eq(units.orgId, ctx.user.orgId), orderBy: (u, { asc }) => [asc(u.name)] });
+    }),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().min(1), symbol: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const [u] = await db.insert(units).values({ ...input, orgId: ctx.user.orgId }).returning();
+        return u;
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), name: z.string().min(1).optional(), symbol: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        await db.update(units).set(data as any).where(and(eq(units.id, id), eq(units.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.delete(units).where(and(eq(units.id, input.id), eq(units.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Stock Vouchers (سندات المخزن) ───────────────────────────────────────────
+  stockVouchers: router({
+    list: protectedProcedure
+      .input(z.object({ type: z.enum(['receipt', 'issue', 'transfer']).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const conds = [eq(stockVouchers.orgId, ctx.user.orgId)];
+        if (input?.type) conds.push(eq(stockVouchers.type, input.type));
+        return db.query.stockVouchers.findMany({
+          where: and(...conds),
+          orderBy: [desc(stockVouchers.createdAt)],
+          limit: 200,
+        });
+      }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const v = await db.query.stockVouchers.findFirst({
+          where: and(eq(stockVouchers.id, input.id), eq(stockVouchers.orgId, ctx.user.orgId)),
+        });
+        if (!v) throw new Error('السند غير موجود');
+        const items = await db.query.stockVoucherItems.findMany({ where: eq(stockVoucherItems.voucherId, input.id) });
+        return { ...v, items };
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        type: z.enum(['receipt', 'issue', 'transfer']),
+        warehouseId: z.number(),
+        branchId: z.number(),
+        supplierId: z.number().optional(),
+        reason: z.string().optional(),
+        notes: z.string().optional(),
+        items: z.array(z.object({
+          productId: z.number(),
+          productName: z.string(),
+          quantity: z.string(),
+          unitCost: z.string(),
+          totalCost: z.string(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { items, ...rest } = input;
+        const totalCost = items.reduce((s, i) => s + Number(i.totalCost), 0).toFixed(4);
+        // توليد رقم السند
+        const last = await db.query.stockVouchers.findFirst({
+          where: eq(stockVouchers.orgId, ctx.user.orgId),
+          orderBy: [desc(stockVouchers.id)],
+        });
+        const num = last ? parseInt(last.voucherNumber.replace(/\D/g, '') || '0') + 1 : 1;
+        const prefix = rest.type === 'receipt' ? 'SV-IN' : rest.type === 'issue' ? 'SV-OUT' : 'SV-TR';
+        const voucherNumber = `${prefix}-${String(num).padStart(4, '0')}`;
+        const [v] = await db.insert(stockVouchers).values({
+          ...rest, orgId: ctx.user.orgId, userId: ctx.user.id, voucherNumber, totalCost, status: 'confirmed',
+        }).returning();
+        if (items.length > 0) {
+          await db.insert(stockVoucherItems).values(
+            items.map((item, i) => ({ ...item, voucherId: v.id, orgId: ctx.user.orgId, sortOrder: i }))
+          );
+        }
+        // تحديث المخزون
+        for (const item of items) {
+          const existing = await db.query.inventory.findFirst({
+            where: and(eq(inventory.orgId, ctx.user.orgId), eq(inventory.productId, item.productId), eq(inventory.warehouseId, rest.warehouseId)),
+          });
+          const qty = Number(item.quantity);
+          const diff = rest.type === 'receipt' ? qty : -qty;
+          if (existing) {
+            await db.update(inventory).set({ quantity: String(Number(existing.quantity) + diff), updatedAt: new Date() })
+              .where(eq(inventory.id, existing.id));
+          } else {
+            await db.insert(inventory).values({ orgId: ctx.user.orgId, productId: item.productId, warehouseId: rest.warehouseId, quantity: String(Math.max(0, diff)), avgCost: item.unitCost });
+          }
+        }
+        return v;
+      }),
+  }),
+
+  // ─── Inventory Count (جرد المخزون) ────────────────────────────────────────────
+  inventoryCount: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.inventoryCounts.findMany({
+        where: eq(inventoryCounts.orgId, ctx.user.orgId),
+        orderBy: [desc(inventoryCounts.createdAt)],
+        limit: 100,
+      });
+    }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const count = await db.query.inventoryCounts.findFirst({
+          where: and(eq(inventoryCounts.id, input.id), eq(inventoryCounts.orgId, ctx.user.orgId)),
+        });
+        if (!count) throw new Error('جلسة الجرد غير موجودة');
+        const items = await db.query.inventoryCountItems.findMany({
+          where: eq(inventoryCountItems.countId, input.id),
+          orderBy: (i, { asc }) => [asc(i.sortOrder)],
+        });
+        return { ...count, items };
+      }),
+    create: protectedProcedure
+      .input(z.object({ warehouseId: z.number(), branchId: z.number().optional(), notes: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const last = await db.query.inventoryCounts.findFirst({
+          where: eq(inventoryCounts.orgId, ctx.user.orgId),
+          orderBy: [desc(inventoryCounts.id)],
+        });
+        const num = last ? parseInt(last.countNumber.replace(/\D/g, '') || '0') + 1 : 1;
+        const countNumber = `CNT-${String(num).padStart(4, '0')}`;
+        const [count] = await db.insert(inventoryCounts).values({
+          ...input, orgId: ctx.user.orgId, userId: ctx.user.id, countNumber, status: 'draft',
+        }).returning();
+        // جلب كميات المخزون الحالية للمخزن المحدد وإضافتها كعناصر جرد
+        const invItems = await db.query.inventory.findMany({
+          where: and(eq(inventory.orgId, ctx.user.orgId), eq(inventory.warehouseId, input.warehouseId)),
+        });
+        if (invItems.length > 0) {
+          const productIds = invItems.map(i => i.productId);
+          const prods = await db.query.products.findMany({
+            where: and(eq(products.orgId, ctx.user.orgId)),
+          });
+          const prodMap = new Map(prods.map(p => [p.id, p]));
+          await db.insert(inventoryCountItems).values(
+            invItems.map((inv, i) => ({
+              countId: count.id,
+              orgId: ctx.user.orgId,
+              productId: inv.productId,
+              productName: prodMap.get(inv.productId)?.name ?? `#${inv.productId}`,
+              systemQuantity: inv.quantity,
+              actualQuantity: inv.quantity,
+              difference: '0',
+              sortOrder: i,
+            }))
+          );
+        }
+        return count.id;
+      }),
+    updateItem: protectedProcedure
+      .input(z.object({ id: z.number(), actualQuantity: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const item = await db.query.inventoryCountItems.findFirst({ where: eq(inventoryCountItems.id, input.id) });
+        if (!item) throw new Error('العنصر غير موجود');
+        const diff = (Number(input.actualQuantity) - Number(item.systemQuantity)).toFixed(4);
+        await db.update(inventoryCountItems).set({ actualQuantity: input.actualQuantity, difference: diff }).where(eq(inventoryCountItems.id, input.id));
+        return { success: true };
+      }),
+    confirm: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const count = await db.query.inventoryCounts.findFirst({
+          where: and(eq(inventoryCounts.id, input.id), eq(inventoryCounts.orgId, ctx.user.orgId)),
+        });
+        if (!count) throw new Error('جلسة الجرد غير موجودة');
+        if (count.status !== 'draft') throw new Error('تم تأكيد الجرد مسبقاً');
+        const items = await db.query.inventoryCountItems.findMany({ where: eq(inventoryCountItems.countId, input.id) });
+        // تطبيق الفروقات على المخزون
+        for (const item of items) {
+          if (!item.productId || !count.warehouseId) continue;
+          const existing = await db.query.inventory.findFirst({
+            where: and(eq(inventory.orgId, ctx.user.orgId), eq(inventory.productId, item.productId), eq(inventory.warehouseId, count.warehouseId)),
+          });
+          if (existing) {
+            await db.update(inventory).set({ quantity: item.actualQuantity, updatedAt: new Date() }).where(eq(inventory.id, existing.id));
+          } else {
+            await db.insert(inventory).values({ orgId: ctx.user.orgId, productId: item.productId, warehouseId: count.warehouseId, quantity: item.actualQuantity });
+          }
+        }
+        await db.update(inventoryCounts).set({ status: 'confirmed', confirmedAt: new Date() }).where(eq(inventoryCounts.id, input.id));
+        return { success: true };
+      }),
+  }),
+
+  // ─── Reports ──────────────────────────────────────────────────────────────────
+  reports: router({
+    stockByWarehouse: protectedProcedure
+      .input(z.object({ warehouseId: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const conds = [eq(inventory.orgId, ctx.user.orgId)];
+        if (input?.warehouseId) conds.push(eq(inventory.warehouseId, input.warehouseId));
+        const invRows = await db.query.inventory.findMany({ where: and(...conds) });
+        const prods = await db.query.products.findMany({ where: eq(products.orgId, ctx.user.orgId) });
+        const warehouseList = await db.query.warehouses.findMany({ where: eq(warehouses.orgId, ctx.user.orgId) });
+        const prodMap = new Map(prods.map(p => [p.id, p]));
+        const whMap = new Map(warehouseList.map(w => [w.id, w]));
+        return invRows.map(r => {
+          const p = prodMap.get(r.productId);
+          const costPrice = r.avgCost ?? p?.purchasePrice ?? '0';
+          const totalValue = Number(r.quantity) * Number(costPrice);
+          return {
+            productId: r.productId,
+            productName: p?.name ?? `#${r.productId}`,
+            warehouseId: r.warehouseId,
+            warehouseName: whMap.get(r.warehouseId ?? 0)?.name ?? `#${r.warehouseId}`,
+            totalQuantity: r.quantity,
+            costPrice,
+            totalValue: totalValue.toFixed(4),
+            minStock: p?.minStock ?? '0',
+            isLow: Number(r.quantity) < Number(p?.minStock ?? 0),
+          };
+        });
+      }),
+    voucherSummary: protectedProcedure.query(async ({ ctx }) => {
+      const all = await db.query.stockVouchers.findMany({
+        where: eq(stockVouchers.orgId, ctx.user.orgId),
+      });
+      const grouped: Record<string, { type: string; count: number; totalCost: number }> = {};
+      for (const v of all) {
+        if (!grouped[v.type]) grouped[v.type] = { type: v.type, count: 0, totalCost: 0 };
+        grouped[v.type].count++;
+        grouped[v.type].totalCost += Number(v.totalCost ?? 0);
+      }
+      return Object.values(grouped).map(g => ({ ...g, totalCost: g.totalCost.toFixed(4) }));
+    }),
+    lowStockAlert: protectedProcedure.query(async ({ ctx }) => {
+      const invRows = await db.query.inventory.findMany({ where: eq(inventory.orgId, ctx.user.orgId) });
+      const prods = await db.query.products.findMany({ where: and(eq(products.orgId, ctx.user.orgId), eq(products.isActive, true)) });
+      const warehouseList = await db.query.warehouses.findMany({ where: eq(warehouses.orgId, ctx.user.orgId) });
+      const prodMap = new Map(prods.map(p => [p.id, p]));
+      const whMap = new Map(warehouseList.map(w => [w.id, w]));
+      return invRows.filter(r => {
+        const p = prodMap.get(r.productId);
+        return p && Number(r.quantity) < Number(p.minStock ?? 0);
+      }).map(r => {
+        const p = prodMap.get(r.productId)!;
+        return {
+          productId: r.productId,
+          productName: p.name,
+          warehouseName: whMap.get(r.warehouseId ?? 0)?.name ?? `#${r.warehouseId}`,
+          quantity: r.quantity,
+          minQuantity: p.minStock,
+        };
+      });
+    }),
+  }),
+});
+
+export type AppRouter = typeof appRouter;
