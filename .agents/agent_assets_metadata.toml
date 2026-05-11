@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "UKuH1M3NkdcSmZ_zcuePP"
+uri = "file://OneSoft-ERP-backup-20260511.tar.gz"
+type = "unspecified"
+title = "OneSoft ERP - نسخة احتياطية 2026-05-11"
