@@ -345,6 +345,17 @@ export const inventoryCountItems = pgTable('inventory_count_items', {
   sortOrder: integer('sort_order').default(0),
 });
 
+// ─── Messages (Internal Chat) ─────────────────────────────────────────────────
+export const messages = pgTable('messages', {
+  id: serial('id').primaryKey(),
+  orgId: integer('org_id').notNull().references(() => organizations.id),
+  senderId: integer('sender_id').notNull().references(() => users.id),
+  receiverId: integer('receiver_id').notNull().references(() => users.id),
+  content: text('content').notNull(),
+  isRead: boolean('is_read').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type Organization = typeof organizations.$inferSelect;
 export type User = typeof users.$inferSelect;

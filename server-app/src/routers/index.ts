@@ -3,6 +3,7 @@ import { router, publicProcedure, protectedProcedure, superAdminProcedure } from
 import { orgsRouter } from './orgs.js';
 import { usersRouter } from './users.js';
 import { salesRouter } from './sales.js';
+import { chatRouter } from './chat.js';
 import { db } from '../db.js';
 import { products, customers, suppliers, chartOfAccounts, warehouses, branches, units, productGroups, journalEntries, journalEntryLines, vouchers, inventory, stockVouchers, stockVoucherItems, inventoryCounts, inventoryCountItems } from '../schema.js';
 import { eq, and, desc, like, or, sql } from 'drizzle-orm';
@@ -29,6 +30,9 @@ export const appRouter = router({
 
   // ─── Sales ───────────────────────────────────────────────────────────────────
   sales: salesRouter,
+
+  // ─── Chat ────────────────────────────────────────────────────────────────────
+  chat: chatRouter,
 
   // ─── Products ────────────────────────────────────────────────────────────────
   products: router({

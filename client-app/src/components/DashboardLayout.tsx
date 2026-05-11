@@ -52,6 +52,7 @@ import {
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import ChatWidget from "./ChatWidget";
 
 const SIDEBAR_WIDTH_KEY = "erp-sidebar-width";
 const LAYOUT_MODE_KEY = "erp-layout-mode";
@@ -350,6 +351,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   ================================================ */
   if (layoutMode === "horizontal") {
     return (
+      <>
       <div className="flex flex-col min-h-screen bg-background">
         {/* Top Bar */}
         <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
@@ -388,6 +390,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Main Content */}
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
+      <ChatWidget />
+      </>
     );
   }
 
@@ -395,6 +399,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
      VERTICAL LAYOUT RENDER (default)
   ================================================ */
   return (
+    <>
     <SidebarProvider
       style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
@@ -490,5 +495,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
+    <ChatWidget />
+    </>
   );
 }
