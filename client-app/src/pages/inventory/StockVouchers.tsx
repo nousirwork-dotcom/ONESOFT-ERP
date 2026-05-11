@@ -14,9 +14,9 @@ import { Plus, ArrowDownCircle, ArrowUpCircle, Trash2, Search, Eye } from "lucid
 
 type VoucherItem = { productId: number; productName: string; quantity: string; unitCost: string; totalCost: string; };
 
-export default function StockVouchers() {
+export default function StockVouchers({ initialTab = "receipt" }: { initialTab?: "receipt" | "issue" }) {
   const utils = trpc.useUtils();
-  const [activeTab, setActiveTab] = useState<"receipt" | "issue">("receipt");
+  const [activeTab, setActiveTab] = useState<"receipt" | "issue">(initialTab);
   const { data: vouchers = [], isLoading } = trpc.stockVouchers.list.useQuery({ type: activeTab });
   const { data: warehouses = [] } = trpc.warehouses.list.useQuery();
   const { data: branches = [] } = trpc.branches.list.useQuery();

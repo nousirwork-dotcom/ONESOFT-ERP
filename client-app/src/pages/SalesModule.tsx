@@ -1,5 +1,6 @@
 import { useState } from "react";
 import SalesInvoicePageNew from "./SalesInvoicePage";
+import SalesQuotation from "./sales/SalesQuotation";
 import {
   ChevronDown, ChevronRight, TrendingUp, FileText, RotateCcw,
   BarChart3, Settings, Users, ClipboardList, ShoppingCart, Tag,
@@ -813,7 +814,7 @@ function SalesContent({ activeId, onSelect }: { activeId: MenuId; onSelect: (id:
     case "sales-invoice":         return <SalesInvoicePageNew />;
     case "sales-return":          return <ComingSoon title="مردود المبيعات" />;
     case "credit-note":           return <ComingSoon title="إشعار دائن" />;
-    case "quotation":             return <ComingSoon title="عرض سعر مبيعات" />;
+    case "quotation":             return <SalesQuotation />;
     case "sales-order":           return <ComingSoon title="أمر بيع" />;
     case "delivery-order":        return <DeliveryOrderPage />;
     case "pos-screen":            return <ComingSoon title="شاشة البيع" />;

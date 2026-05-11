@@ -345,6 +345,23 @@ export const inventoryCountItems = pgTable('inventory_count_items', {
   sortOrder: integer('sort_order').default(0),
 });
 
+// ─── Free Products (الأصناف المجانية) ─────────────────────────────────────────
+export const freeProducts = pgTable('free_products', {
+  id: serial('id').primaryKey(),
+  orgId: integer('org_id').notNull().references(() => organizations.id),
+  productId: integer('product_id').references(() => products.id),
+  productCode: varchar('product_code', { length: 100 }),
+  productName: varchar('product_name', { length: 500 }).notNull(),
+  unit: varchar('unit', { length: 100 }),
+  baseQty: decimal('base_qty', { precision: 18, scale: 4 }).notNull().default('1'),
+  freeQty: decimal('free_qty', { precision: 18, scale: 4 }).notNull().default('1'),
+  offerStart: timestamp('offer_start'),
+  offerEnd: timestamp('offer_end'),
+  isActive: boolean('is_active').notNull().default(true),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // ─── Messages (Internal Chat) ─────────────────────────────────────────────────
 export const messages = pgTable('messages', {
   id: serial('id').primaryKey(),

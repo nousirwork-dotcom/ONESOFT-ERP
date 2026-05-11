@@ -11,6 +11,8 @@ import {
   Archive,
   Edit,
   Layers,
+  Maximize2,
+  Minimize2,
   Package,
   Plus,
   Search,
@@ -87,7 +89,14 @@ type ProductForm = {
   salePrice4: string;
   salePrice5: string;
   wholesalePrice: string;
+  minSalePrice: string;
   priceIncludesTax: boolean;
+  price1Tax: boolean;
+  price2Tax: boolean;
+  price3Tax: boolean;
+  price4Tax: boolean;
+  price5Tax: boolean;
+  wholesaleTax: boolean;
   pricingPlan: string;
   // التبويب 4 - التكاليف
   stdCost: string;
@@ -114,7 +123,10 @@ const emptyForm: ProductForm = {
   extDesc5: "", extVal5: "", extDesc6: "", extVal6: "",
   purchasePrice: "0", costPrice: "0", salePrice: "0",
   salePrice2: "0", salePrice3: "0", salePrice4: "0", salePrice5: "0",
-  wholesalePrice: "0", priceIncludesTax: false, pricingPlan: "",
+  wholesalePrice: "0", minSalePrice: "0",
+  priceIncludesTax: false,
+  price1Tax: false, price2Tax: false, price3Tax: false, price4Tax: false, price5Tax: false, wholesaleTax: false,
+  pricingPlan: "",
   stdCost: "0", defaultSupplier: "", lastSupplier1: "", lastSupplier2: "",
   defaultOrderQty: "0",
 };
@@ -182,13 +194,25 @@ function ProductCard({
   setForm,
   categories,
   groups,
+  productId,
 }: {
   form: ProductForm;
   setForm: (f: ProductForm) => void;
   categories: Array<{ id: number; name: string }> | undefined;
   groups: Array<{ id: number; groupCode?: string | null; name: string }> | undefined;
+  productId?: number | null;
 }) {
   const [activeTab, setActiveTab] = useState<string>("main");
+  const isEdit = !!productId;
+
+  const { data: stockData, isLoading: loadingStock } = trpc.products.stockByWarehouse.useQuery(
+    { productId: productId! },
+    { enabled: isEdit && activeTab === "qty" }
+  );
+  const { data: costsData, isLoading: loadingCosts } = trpc.products.costHistory.useQuery(
+    { productId: productId! },
+    { enabled: isEdit && activeTab === "costs" }
+  );
   const set = (key: keyof ProductForm, val: string | boolean) =>
     setForm({ ...form, [key]: val });
 
@@ -200,6 +224,8 @@ function ProductCard({
     { id: "qty", label: "كميات" },
     { id: "stats", label: "إحصائيات" },
   ];
+
+  const groupName = groups?.find(g => g.id === Number(form.groupId))?.name;
 
   return (
     <div className="flex flex-col h-full" dir="rtl">
@@ -220,207 +246,237 @@ function ProductCard({
         ))}
       </div>
 
+      {/* شريط المعلومات الثابت */}
+      {(form.name || form.sku) && (
+        <div className="flex-shrink-0 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 px-4 py-1.5 flex items-center gap-3 flex-wrap">
+          <div className="flex flex-col leading-tight">
+            <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{form.name || "—"}</span>
+            {form.nameEn && <span className="text-xs text-slate-500 dark:text-slate-400">{form.nameEn}</span>}
+          </div>
+          {form.sku && (
+            <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-mono">{form.sku}</span>
+          )}
+          {groupName && (
+            <span className="text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded">{groupName}</span>
+          )}
+          {form.itemType && (
+            <span className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded">{form.itemType}</span>
+          )}
+        </div>
+      )}
+
       {/* محتوى التبويبات */}
       <div className="flex-1 overflow-y-auto p-4">
 
         {/* ===== التبويب 1: النافذة الرئيسية ===== */}
         {activeTab === "main" && (
-          <div className="space-y-4">
-            {/* الصف الأول: معلومات أساسية */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded">
-              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">بيانات الصنف الأساسية</span>
+          <div className="space-y-0 border border-slate-300 dark:border-slate-600 rounded overflow-hidden text-sm">
+
+            {/* ── الصف العلوي: مواصفات | نوع ومجموعة ── */}
+            <div className="flex border-b border-slate-300 dark:border-slate-600">
+
+              {/* يمين: مواصفات — رقم، اسم 1، اسم 2 */}
+              <div className="flex-1 border-l border-slate-300 dark:border-slate-600">
+                <div className="bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 border-b border-slate-300 dark:border-slate-600 text-center">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">مواصفات</span>
+                </div>
+                {/* رقم */}
+                <div className="flex border-b border-slate-200 dark:border-slate-700">
+                  <div className="w-24 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">رقم</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <CInput value={form.sku} onChange={(v) => set("sku", v)} placeholder="SKU-001" className="w-full" />
+                  </div>
+                </div>
+                {/* اسم 1 */}
+                <div className="flex border-b border-slate-200 dark:border-slate-700">
+                  <div className="w-24 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">إسم 1</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <CInput value={form.name} onChange={(v) => set("name", v)} placeholder="اسم الصنف بالعربية" className="w-full" />
+                  </div>
+                </div>
+                {/* اسم 2 */}
+                <div className="flex">
+                  <div className="w-24 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">إسم 2</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <CInput value={form.name2} onChange={(v) => set("name2", v)} placeholder="English Name" dir="ltr" className="w-full" />
+                  </div>
+                </div>
               </div>
-              <div className="p-3 grid grid-cols-4 gap-3">
-                <CField label="رقم الصنف / الكود" required>
-                  <CInput value={form.sku} onChange={(v) => set("sku", v)} placeholder="SKU-001" />
-                </CField>
-                <CField label="اسم الصنف 1" required className="col-span-2">
-                  <CInput value={form.name} onChange={(v) => set("name", v)} placeholder="اسم الصنف بالعربية" />
-                </CField>
-                <CField label="نوع السجل">
-                  <select
-                    value={form.itemType}
-                    onChange={(e) => set("itemType", e.target.value)}
-                    className="h-7 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="مخزون">مخزون</option>
-                    <option value="خدمة">خدمة</option>
-                    <option value="مجموعة">مجموعة</option>
-                    <option value="مركّب">مركّب</option>
-                  </select>
-                </CField>
-                <CField label="اسم الصنف 2 (إنجليزي)">
-                  <CInput value={form.name2} onChange={(v) => set("name2", v)} placeholder="English name" dir="ltr" />
-                </CField>
-                <CField label="رقم المجموعة">
-                  <select
-                    value={form.groupId || "none"}
-                    onChange={(e) => set("groupId", e.target.value === "none" ? "" : e.target.value)}
-                    className="h-7 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="none">-- بدون مجموعة --</option>
-                    {groups?.map((g) => (
-                      <option key={g.id} value={String(g.id)}>
-                        {g.groupCode ? `[${g.groupCode}] ` : ""}{g.name}
-                      </option>
-                    ))}
-                  </select>
-                </CField>
-                <CField label="التصنيف">
-                  <select
-                    value={form.categoryId || "none"}
-                    onChange={(e) => set("categoryId", e.target.value === "none" ? "" : e.target.value)}
-                    className="h-7 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="none">-- بدون تصنيف --</option>
-                    {categories?.map((c) => (
-                      <option key={c.id} value={String(c.id)}>{c.name}</option>
-                    ))}
-                  </select>
-                </CField>
-                <CField label="الصنف الرئيسي">
-                  <CInput value={form.parentItem} onChange={(v) => set("parentItem", v)} placeholder="رقم الصنف الرئيسي" />
-                </CField>
+
+              {/* يسار: نوع السجل، رقم المجموعة، التصنيف، الصنف الرئيسي */}
+              <div className="w-72 shrink-0">
+                <div className="bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 border-b border-slate-300 dark:border-slate-600 text-center">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">نوع</span>
+                </div>
+                {/* نوع السجل */}
+                <div className="flex border-b border-slate-200 dark:border-slate-700">
+                  <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">نوع السجل</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <select value={form.itemType} onChange={(e) => set("itemType", e.target.value)}
+                      className="h-7 w-full text-sm border border-slate-300 dark:border-slate-600 rounded px-1 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500">
+                      <option value="مخزون">مخزون</option>
+                      <option value="خدمة">خدمة</option>
+                      <option value="مجموعة">مجموعة</option>
+                      <option value="مركّب">مركّب</option>
+                    </select>
+                  </div>
+                </div>
+                {/* رقم المجموعة */}
+                <div className="flex border-b border-slate-200 dark:border-slate-700">
+                  <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">رقم المجموعة</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <select value={form.groupId || "none"} onChange={(e) => set("groupId", e.target.value === "none" ? "" : e.target.value)}
+                      className="h-7 w-full text-sm border border-slate-300 dark:border-slate-600 rounded px-1 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500">
+                      <option value="none">-- بدون --</option>
+                      {groups?.map((g) => (
+                        <option key={g.id} value={String(g.id)}>{g.groupCode ? `[${g.groupCode}] ` : ""}{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {/* التصنيف */}
+                <div className="flex border-b border-slate-200 dark:border-slate-700">
+                  <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">التصنيف</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <select value={form.categoryId || "none"} onChange={(e) => set("categoryId", e.target.value === "none" ? "" : e.target.value)}
+                      className="h-7 w-full text-sm border border-slate-300 dark:border-slate-600 rounded px-1 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500">
+                      <option value="none">-- بدون --</option>
+                      {categories?.map((c) => (
+                        <option key={c.id} value={String(c.id)}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {/* الصنف الرئيسي */}
+                <div className="flex">
+                  <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">الصنف الرئيسي</span>
+                  </div>
+                  <div className="flex-1 px-1 py-1">
+                    <CInput value={form.parentItem} onChange={(v) => set("parentItem", v)} placeholder="" className="w-full" />
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* جدول الوحدات */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded">
-              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">وحدات القياس</span>
-              </div>
+            {/* ── جدول الوحدات والباركود ── */}
+            <div className="border-b border-slate-300 dark:border-slate-600">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-8">#</th>
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">الوحدة</th>
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">معامل التحويل</th>
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">الباركود</th>
+                  <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-300 dark:border-slate-600">
+                    <th className="text-center px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 w-8 border-l border-slate-300 dark:border-slate-600">#</th>
+                    <th className="text-center px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 border-l border-slate-300 dark:border-slate-600">وحدة</th>
+                    <th className="text-center px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 w-32 border-l border-slate-300 dark:border-slate-600">م. تحويل</th>
+                    <th className="text-center px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400">باركود</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                    <td className="px-3 py-1.5 text-xs text-slate-500">1</td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.unit} onChange={(v) => set("unit", v)} placeholder="قطعة" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <CInput value="1" readOnly className="w-full bg-slate-50 dark:bg-slate-700" />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.barcode} onChange={(v) => set("barcode", v)} placeholder="باركود 1" dir="ltr" className="w-full" />
-                    </td>
-                  </tr>
-                  <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                    <td className="px-3 py-1.5 text-xs text-slate-500">2</td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.unit2} onChange={(v) => set("unit2", v)} placeholder="وحدة 2" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.convFactor2} onChange={(v) => set("convFactor2", v)} type="number" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.barcode2} onChange={(v) => set("barcode2", v)} placeholder="باركود 2" dir="ltr" className="w-full" />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-1.5 text-xs text-slate-500">3</td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.unit3} onChange={(v) => set("unit3", v)} placeholder="وحدة 3" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.convFactor3} onChange={(v) => set("convFactor3", v)} type="number" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.barcode3} onChange={(v) => set("barcode3", v)} placeholder="باركود 3" dir="ltr" className="w-full" />
-                    </td>
-                  </tr>
+                  {[
+                    { num: 1, unit: form.unit, unitKey: "unit", conv: "1", convKey: null, bc: form.barcode, bcKey: "barcode" },
+                    { num: 2, unit: form.unit2, unitKey: "unit2", conv: form.convFactor2, convKey: "convFactor2", bc: form.barcode2, bcKey: "barcode2" },
+                    { num: 3, unit: form.unit3, unitKey: "unit3", conv: form.convFactor3, convKey: "convFactor3", bc: form.barcode3, bcKey: "barcode3" },
+                  ].map((row) => (
+                    <tr key={row.num} className="border-b border-slate-200 dark:border-slate-700">
+                      <td className="text-center px-2 py-1 text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700">{row.num}</td>
+                      <td className="px-1 py-1 border-l border-slate-200 dark:border-slate-700">
+                        <CInput value={row.unit} onChange={(v) => set(row.unitKey as keyof ProductForm, v)} placeholder={row.num === 1 ? "قطعة" : `وحدة ${row.num}`} className="w-full" />
+                      </td>
+                      <td className="px-1 py-1 border-l border-slate-200 dark:border-slate-700">
+                        {row.convKey
+                          ? <CInput value={row.conv} onChange={(v) => set(row.convKey as keyof ProductForm, v)} type="number" className="w-full text-center" />
+                          : <CInput value="1.000" readOnly className="w-full text-center bg-slate-50 dark:bg-slate-700 text-slate-500" />
+                        }
+                      </td>
+                      <td className="px-1 py-1">
+                        <CInput value={row.bc} onChange={(v) => set(row.bcKey as keyof ProductForm, v)} placeholder="" dir="ltr" className="w-full" />
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
 
-            {/* الفئات والمواصفات */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* الفئات */}
-              <div className="border border-slate-200 dark:border-slate-700 rounded">
-                <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">الفئات</span>
+            {/* ── الصف السفلي: فئات | مواصفات تفصيلية ── */}
+            <div className="flex border-b border-slate-300 dark:border-slate-600">
+
+              {/* يمين: فئات */}
+              <div className="flex-1 border-l border-slate-300 dark:border-slate-600">
+                <div className="bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 border-b border-slate-300 dark:border-slate-600 text-center">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">فئات</span>
                 </div>
-                <div className="p-3 space-y-2">
-                  <CField label="فئة 1">
-                    <CInput value={form.category1} onChange={(v) => set("category1", v)} placeholder="الفئة الأولى" />
-                  </CField>
-                  <CField label="فئة 2">
-                    <CInput value={form.category2} onChange={(v) => set("category2", v)} placeholder="الفئة الثانية" />
-                  </CField>
-                  <CField label="فئة 3">
-                    <CInput value={form.category3} onChange={(v) => set("category3", v)} placeholder="الفئة الثالثة" />
-                  </CField>
-                </div>
+                {[
+                  { label: "فئة 1", key: "category1" },
+                  { label: "فئة 2", key: "category2" },
+                  { label: "فئة 3", key: "category3" },
+                ].map((r, i, arr) => (
+                  <div key={r.key} className={`flex ${i < arr.length - 1 ? "border-b border-slate-200 dark:border-slate-700" : ""}`}>
+                    <div className="w-20 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                      <span className="text-xs text-slate-600 dark:text-slate-400">{r.label}</span>
+                    </div>
+                    <div className="flex-1 px-1 py-1">
+                      <CInput value={(form as any)[r.key]} onChange={(v) => set(r.key as keyof ProductForm, v)} placeholder="" className="w-full" />
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              {/* المواصفات */}
-              <div className="border border-slate-200 dark:border-slate-700 rounded">
-                <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">المواصفات</span>
+              {/* يسار: مواصفات تفصيلية */}
+              <div className="w-72 shrink-0">
+                <div className="bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 border-b border-slate-300 dark:border-slate-600 text-center">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">مواصفات</span>
                 </div>
-                <div className="p-3 grid grid-cols-2 gap-2">
-                  <CField label="الرقم المميز">
-                    <CInput value={form.distinguishNo} onChange={(v) => set("distinguishNo", v)} placeholder="" />
-                  </CField>
-                  <CField label="الوزن">
-                    <CInput value={form.weight} onChange={(v) => set("weight", v)} type="number" placeholder="0.000" />
-                  </CField>
-                  <CField label="المقاس">
-                    <CInput value={form.size} onChange={(v) => set("size", v)} placeholder="" />
-                  </CField>
-                  <CField label="نوع الكود / اللون">
-                    <CInput value={form.colorCode} onChange={(v) => set("colorCode", v)} placeholder="" />
-                  </CField>
-                  <CField label="الحجم" className="col-span-2">
-                    <CInput value={form.itemSize} onChange={(v) => set("itemSize", v)} placeholder="" />
-                  </CField>
+                {[
+                  { label: "الرقم المميز", key: "distinguishNo", type: "text" },
+                  { label: "وزن", key: "weight", type: "number" },
+                  { label: "مقاس", key: "size", type: "text" },
+                  { label: "نوع الكود", key: "colorCode", type: "text" },
+                  { label: "لون", key: "colorCode", type: "text" },
+                  { label: "حجم", key: "itemSize", type: "text" },
+                ].map((r, i) => (
+                  <div key={`${r.key}-${i}`} className={`flex ${i < 5 ? "border-b border-slate-200 dark:border-slate-700" : ""}`}>
+                    <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                      <span className="text-xs text-slate-600 dark:text-slate-400">{r.label}</span>
+                    </div>
+                    <div className="flex-1 px-1 py-1">
+                      <CInput value={(form as any)[r.key]} onChange={(v) => set(r.key as keyof ProductForm, v)} type={r.type} placeholder="" className="w-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── نوع الضريبة ── */}
+            <div className="flex">
+              <div className="flex-1 border-l border-slate-300 dark:border-slate-600 flex">
+                <div className="w-36 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                  <span className="text-xs text-slate-600 dark:text-slate-400">نوع الضريبة السابقة</span>
+                </div>
+                <div className="flex-1 px-1 py-1">
+                  <CInput value={form.prevTaxType} onChange={(v) => set("prevTaxType", v)} placeholder="" className="w-full" />
+                </div>
+              </div>
+              <div className="w-72 shrink-0 flex">
+                <div className="w-28 shrink-0 bg-slate-50 dark:bg-slate-800 px-2 flex items-center border-l border-slate-200 dark:border-slate-700">
+                  <span className="text-xs text-slate-600 dark:text-slate-400">نوع الضريبة</span>
+                </div>
+                <div className="flex-1 px-1 py-1">
+                  <CInput value={form.vatRate} onChange={(v) => set("vatRate", v)} type="number" placeholder="15" className="w-full" />
                 </div>
               </div>
             </div>
 
-            {/* نوع الضريبة */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded">
-              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">الضريبة</span>
-              </div>
-              <div className="p-3 grid grid-cols-4 gap-3">
-                <CField label="نوع الضريبة">
-                  <select
-                    value={form.taxType}
-                    onChange={(e) => set("taxType", e.target.value)}
-                    className="h-7 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="">-- اختر --</option>
-                    <option value="خاضع">خاضع للضريبة</option>
-                    <option value="معفي">معفي من الضريبة</option>
-                    <option value="صفري">صفري</option>
-                  </select>
-                </CField>
-                <CField label="نوع الضريبة السابق">
-                  <CInput value={form.prevTaxType} onChange={(v) => set("prevTaxType", v)} placeholder="" />
-                </CField>
-                <CField label="نسبة الضريبة (%)">
-                  <CInput value={form.vatRate} onChange={(v) => set("vatRate", v)} type="number" placeholder="15" />
-                </CField>
-                <div className="flex items-end gap-2 pb-0.5">
-                  <Switch
-                    checked={form.taxable}
-                    onCheckedChange={(v) => set("taxable", v)}
-                    id="taxable"
-                  />
-                  <label htmlFor="taxable" className="text-sm cursor-pointer">
-                    {form.taxable ? "خاضع للضريبة" : "غير خاضع"}
-                  </label>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -533,19 +589,18 @@ function ProductCard({
                   <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
                     <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">نوع السعر</th>
                     <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-40">السعر</th>
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-32">الوحدة</th>
+                    <th className="text-center px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-24">يشمل ضريبة</th>
+                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-24">الوحدة</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: "سعر الشراء", field: "purchasePrice" },
-                    { label: "سعر التكلفة", field: "costPrice" },
-                    { label: "سعر البيع 1 (الأساسي)", field: "salePrice" },
-                    { label: "سعر البيع 2", field: "salePrice2" },
-                    { label: "سعر البيع 3", field: "salePrice3" },
-                    { label: "سعر البيع 4", field: "salePrice4" },
-                    { label: "سعر البيع 5", field: "salePrice5" },
-                    { label: "سعر الجملة", field: "wholesalePrice" },
+                    { label: "سعر البيع 1 (الأساسي)", field: "salePrice", taxField: "price1Tax" },
+                    { label: "سعر البيع 2", field: "salePrice2", taxField: "price2Tax" },
+                    { label: "سعر البيع 3", field: "salePrice3", taxField: "price3Tax" },
+                    { label: "سعر البيع 4", field: "salePrice4", taxField: "price4Tax" },
+                    { label: "سعر البيع 5", field: "salePrice5", taxField: "price5Tax" },
+                    { label: "سعر الجملة", field: "wholesalePrice", taxField: "wholesaleTax" },
                   ].map((row) => (
                     <tr key={row.field} className="border-b border-slate-100 dark:border-slate-700/50">
                       <td className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300">{row.label}</td>
@@ -557,6 +612,14 @@ function ProductCard({
                           className="w-full"
                         />
                       </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={(form as any)[row.taxField]}
+                          onChange={(e) => set(row.taxField as keyof ProductForm, e.target.checked)}
+                          className="w-4 h-4 accent-blue-600 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-3 py-1.5 text-xs text-slate-500">{form.unit || "قطعة"}</td>
                     </tr>
                   ))}
@@ -564,23 +627,26 @@ function ProductCard({
               </table>
             </div>
 
-            {/* قواعد التسعير */}
+            {/* أقل سعر بيع وقواعد التسعير */}
             <div className="border border-slate-200 dark:border-slate-700 rounded">
               <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">قواعد التسعير</span>
               </div>
               <div className="p-3 grid grid-cols-3 gap-3">
-                <div className="flex items-center gap-2">
+                <CField label="أقل سعر بيع (الحد الأدنى)">
+                  <CInput value={form.minSalePrice} onChange={(v) => set("minSalePrice", v)} type="number" placeholder="0" />
+                </CField>
+                <CField label="خطة التسعير">
+                  <CInput value={form.pricingPlan} onChange={(v) => set("pricingPlan", v)} placeholder="اختياري" />
+                </CField>
+                <div className="flex items-end gap-2 pb-0.5">
                   <Switch
                     checked={form.priceIncludesTax}
                     onCheckedChange={(v) => set("priceIncludesTax", v)}
                     id="priceIncludesTax"
                   />
-                  <label htmlFor="priceIncludesTax" className="text-sm cursor-pointer">السعر يشمل الضريبة</label>
+                  <label htmlFor="priceIncludesTax" className="text-sm cursor-pointer">الأسعار تشمل الضريبة (افتراضي)</label>
                 </div>
-                <CField label="خطة التسعير">
-                  <CInput value={form.pricingPlan} onChange={(v) => set("pricingPlan", v)} placeholder="اختياري" />
-                </CField>
               </div>
             </div>
           </div>
@@ -588,80 +654,184 @@ function ProductCard({
 
         {/* ===== التبويب 4: التكاليف ===== */}
         {activeTab === "costs" && (
-          <div className="space-y-4">
-            {/* بيانات الموردين */}
+          <div className="space-y-3">
+            {/* رأس: الموردين + آخر مشتريات */}
             <div className="border border-slate-200 dark:border-slate-700 rounded">
-              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
+              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">بيانات الموردين</span>
+                {isEdit && costsData?.lastVoucherDate && (
+                  <span className="text-xs text-slate-500">آخر مشتروات: {new Date(costsData.lastVoucherDate).toLocaleDateString("ar-SA")}</span>
+                )}
               </div>
-              <div className="p-3 grid grid-cols-2 gap-3">
+              <div className="p-3 grid grid-cols-4 gap-2">
                 <CField label="المورد الافتراضي">
-                  <CInput value={form.defaultSupplier} onChange={(v) => set("defaultSupplier", v)} placeholder="اسم المورد الافتراضي" />
+                  <CInput value={form.defaultSupplier} onChange={(v) => set("defaultSupplier", v)} placeholder="—" />
                 </CField>
                 <CField label="آخر مورد 1">
-                  <CInput value={form.lastSupplier1} onChange={(v) => set("lastSupplier1", v)} placeholder="آخر مورد" />
+                  {isEdit
+                    ? <CInput value={costsData?.lastSupplierName ?? "—"} readOnly />
+                    : <CInput value={form.lastSupplier1} onChange={(v) => set("lastSupplier1", v)} placeholder="—" />
+                  }
                 </CField>
                 <CField label="آخر مورد 2">
-                  <CInput value={form.lastSupplier2} onChange={(v) => set("lastSupplier2", v)} placeholder="مورد بديل" />
+                  <CInput value={form.lastSupplier2} onChange={(v) => set("lastSupplier2", v)} placeholder="—" />
                 </CField>
                 <CField label="كمية الطلب الافتراضية">
-                  <CInput value={form.defaultOrderQty} onChange={(v) => set("defaultOrderQty", v)} type="number" placeholder="0" />
+                  <CInput value={form.defaultOrderQty} onChange={(v) => set("defaultOrderQty", v)} type="number" placeholder="0.000" />
                 </CField>
               </div>
             </div>
 
-            {/* جدول التكاليف */}
+            {/* جدول التكاليف — قراءة فقط لصنف موجود */}
             <div className="border border-slate-200 dark:border-slate-700 rounded">
-              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
+              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">التكاليف</span>
+                {isEdit && (
+                  <span className="text-xs text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">محسوب آلياً من فواتير المشتريات</span>
+                )}
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">نوع التكلفة</th>
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-40">القيمة</th>
-                    <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-24">الوحدة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                    <td className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300">سعر الشراء</td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.purchasePrice} onChange={(v) => set("purchasePrice", v)} type="number" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5 text-xs text-slate-500">{form.unit || "قطعة"}</td>
-                  </tr>
-                  <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                    <td className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300">سعر التكلفة</td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.costPrice} onChange={(v) => set("costPrice", v)} type="number" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5 text-xs text-slate-500">{form.unit || "قطعة"}</td>
-                  </tr>
-                  <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                    <td className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300">التكلفة القياسية</td>
-                    <td className="px-3 py-1.5">
-                      <CInput value={form.stdCost} onChange={(v) => set("stdCost", v)} type="number" className="w-full" />
-                    </td>
-                    <td className="px-3 py-1.5 text-xs text-slate-500">{form.unit || "قطعة"}</td>
-                  </tr>
-                </tbody>
-              </table>
+              {isEdit ? (
+                loadingCosts ? (
+                  <div className="p-4 text-center text-slate-400 text-sm">جاري التحميل...</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-8">#</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">نوع التكلفة</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-36">وحدة 1</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-20">عملة</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-20">معدل</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { num: 1, label: "آخر تكلفة", value: costsData?.lastCost ?? "0" },
+                        { num: 2, label: "تكلفة سابقة", value: costsData?.prevCost ?? "0" },
+                        { num: 3, label: "متوسط التكلفة", value: costsData?.avgCost ?? "0" },
+                        { num: 4, label: "آخر طلبية", value: costsData?.lastOrderCost ?? "0" },
+                        { num: 5, label: "تكلفة قياسية", value: costsData?.standardCost ?? "0" },
+                      ].map(row => (
+                        <tr key={row.num} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-1.5 text-xs text-slate-500">{row.num}</td>
+                          <td className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300">{row.label}</td>
+                          <td className="px-3 py-1.5">
+                            <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">
+                              {Number(row.value).toFixed(4)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1.5 text-xs text-slate-500">ر.س</td>
+                          <td className="px-3 py-1.5 text-xs text-slate-500">1.0000</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              ) : (
+                <div className="p-4 text-center text-slate-400 text-sm">
+                  <p>تُحسب التكاليف تلقائياً من فواتير المشتريات بعد حفظ الصنف.</p>
+                  <p className="text-xs mt-1">النظام يستخدم <strong>متوسط سعر الشراء</strong> لتسعير المخزون.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* ===== التبويب 5: كميات ===== */}
         {activeTab === "qty" && (
-          <div className="space-y-4">
+          <div className="space-y-3">
+            {/* شريط الإجماليات */}
+            {isEdit && (
+              <div className="border border-slate-200 dark:border-slate-700 rounded">
+                <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">وحدة الكميات</span>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{form.unit || "قطعة"}</span>
+                </div>
+                <div className="p-3 grid grid-cols-4 gap-3">
+                  {loadingStock ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-10 bg-slate-100 dark:bg-slate-700 rounded animate-pulse" />
+                    ))
+                  ) : (
+                    <>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2 text-center">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">إجمالي الكميات</p>
+                        <p className="text-lg font-bold text-blue-700 dark:text-blue-300 font-mono">{Number(stockData?.total ?? 0).toFixed(3)}</p>
+                      </div>
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded p-2 text-center">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">متوسط التكلفة</p>
+                        <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300 font-mono">{Number(stockData?.avgCost ?? 0).toFixed(4)}</p>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-center">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">محجوز للبيع</p>
+                        <p className="text-lg font-bold text-slate-600 dark:text-slate-300 font-mono">0.000</p>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-center">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">مشتروات لم تستلم</p>
+                        <p className="text-lg font-bold text-slate-600 dark:text-slate-300 font-mono">0.000</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* جدول الكميات حسب المخزن */}
             <div className="border border-slate-200 dark:border-slate-700 rounded">
               <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">الكميات بالمخازن</span>
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">الكميات حسب المخزن / الفرع</span>
               </div>
-              <div className="p-4 text-center text-slate-500 dark:text-slate-400 text-sm">
-                <p>تُعرض الكميات بعد حفظ الصنف وربطه بالمخازن.</p>
-                <p className="text-xs mt-1">يمكن إدارة الكميات من شاشة <strong>المخازن</strong> أو <strong>سندات المخزون</strong>.</p>
-              </div>
+              {isEdit ? (
+                loadingStock ? (
+                  <div className="p-4 text-center text-slate-400 text-sm">جاري التحميل...</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-8">#</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">اسم المخزن</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-32">الكمية الآنية</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-32">الكمية المرحلة</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-28">حد أقصى</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-28">حد الطلب</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 w-28">كمية الجرد</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* صف الإجماليات */}
+                      <tr className="border-b border-slate-200 dark:border-slate-600 bg-blue-50/50 dark:bg-blue-900/10 font-semibold">
+                        <td className="px-3 py-1.5 text-xs text-slate-500">—</td>
+                        <td className="px-3 py-1.5 text-sm text-blue-700 dark:text-blue-400">إجماليات</td>
+                        <td className="px-3 py-1.5 font-mono text-sm text-blue-700 dark:text-blue-400">{Number(stockData?.total ?? 0).toFixed(3)}</td>
+                        <td className="px-3 py-1.5 font-mono text-sm text-blue-700 dark:text-blue-400">{Number(stockData?.total ?? 0).toFixed(3)}</td>
+                        <td className="px-3 py-1.5 font-mono text-sm text-slate-500">{Number(form.maxStock || 0).toFixed(3)}</td>
+                        <td className="px-3 py-1.5 font-mono text-sm text-slate-500">{Number(form.minStock || 0).toFixed(3)}</td>
+                        <td className="px-3 py-1.5 font-mono text-sm text-slate-500">0.000</td>
+                      </tr>
+                      {stockData?.rows?.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-center text-slate-400 text-sm">لا توجد كميات مسجلة بالمخازن</td>
+                        </tr>
+                      )}
+                      {(stockData?.rows ?? []).map((row: any, i: number) => (
+                        <tr key={row.warehouseId} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-1.5 text-xs text-slate-500">{i + 1}</td>
+                          <td className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300">{row.warehouseName}</td>
+                          <td className="px-3 py-1.5 font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">{Number(row.quantity).toFixed(3)}</td>
+                          <td className="px-3 py-1.5 font-mono text-sm text-slate-600 dark:text-slate-300">{Number(row.quantity).toFixed(3)}</td>
+                          <td className="px-3 py-1.5 font-mono text-sm text-slate-500">—</td>
+                          <td className="px-3 py-1.5 font-mono text-sm text-slate-500">—</td>
+                          <td className="px-3 py-1.5 font-mono text-sm text-slate-500">0.000</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              ) : (
+                <div className="p-4 text-center text-slate-400 text-sm">
+                  <p>تُعرض الكميات بعد حفظ الصنف وربطه بالمخازن عبر سندات التوريد.</p>
+                </div>
+              )}
             </div>
 
             {/* حدود المخزون */}
@@ -670,14 +840,14 @@ function ProductCard({
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">حدود المخزون</span>
               </div>
               <div className="p-3 grid grid-cols-3 gap-3">
-                <CField label="الحد الأدنى">
-                  <CInput value={form.minStock} onChange={(v) => set("minStock", v)} type="number" />
+                <CField label="الحد الأدنى (حد الطلب)">
+                  <CInput value={form.minStock} onChange={(v) => set("minStock", v)} type="number" placeholder="0.000" />
                 </CField>
                 <CField label="الحد الأقصى">
-                  <CInput value={form.maxStock} onChange={(v) => set("maxStock", v)} type="number" />
+                  <CInput value={form.maxStock} onChange={(v) => set("maxStock", v)} type="number" placeholder="0.000" />
                 </CField>
                 <CField label="نقطة إعادة الطلب">
-                  <CInput value={form.reorderPoint} onChange={(v) => set("reorderPoint", v)} type="number" />
+                  <CInput value={form.reorderPoint} onChange={(v) => set("reorderPoint", v)} type="number" placeholder="0.000" />
                 </CField>
               </div>
             </div>
@@ -737,6 +907,7 @@ export default function Products() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [viewTab, setViewTab] = useState<"products" | "categories">("products");
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
+  const [dialogSize, setDialogSize] = useState<"full" | "compact">("full");
 
   const toggleSort = (field: string) => {
     if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -849,7 +1020,14 @@ export default function Products() {
       salePrice4: p.salePrice4 ?? "0",
       salePrice5: p.salePrice5 ?? "0",
       wholesalePrice: p.wholesalePrice ?? "0",
+      minSalePrice: p.minSalePrice ?? "0",
       priceIncludesTax: p.priceIncludesTax ?? false,
+      price1Tax: p.price1Tax ?? false,
+      price2Tax: p.price2Tax ?? false,
+      price3Tax: p.price3Tax ?? false,
+      price4Tax: p.price4Tax ?? false,
+      price5Tax: p.price5Tax ?? false,
+      wholesaleTax: p.wholesaleTax ?? false,
       pricingPlan: p.pricingPlan ?? "",
       stdCost: p.stdCost ?? "0",
       defaultSupplier: p.defaultSupplier ?? "",
@@ -923,6 +1101,7 @@ export default function Products() {
       salePrice4: form.salePrice4 || "0",
       salePrice5: form.salePrice5 || "0",
       wholesalePrice: form.wholesalePrice || "0",
+      minSalePrice: form.minSalePrice || "0",
       priceIncludesTax: form.priceIncludesTax,
       pricingPlan: form.pricingPlan.trim() || undefined,
       stdCost: form.stdCost || "0",
@@ -1311,13 +1490,37 @@ export default function Products() {
         </div>
       )}
 
-      {/* ===== Dialog كارت الصنف (محدود الأبعاد) ===== */}
+      {/* ===== Dialog كارت الصنف — يملأ منطقة المحتوى بالكامل ===== */}
       <Dialog open={isOpen} onOpenChange={(open) => !open && setIsOpen(false)}>
         <DialogContent
-          className="max-w-[95vw] w-[1100px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden"
+          showCloseButton={false}
+          className="inset-0 flex flex-col p-0 gap-0 overflow-hidden shadow-xl"
+          style={dialogSize === "full" ? {
+            position: "fixed",
+            top: "56px",
+            bottom: "16px",
+            left: "8px",
+            right: "var(--sidebar-width, 260px)",
+            width: "auto",
+            height: "auto",
+            maxWidth: "none",
+            transform: "none",
+            borderRadius: "6px",
+          } : {
+            position: "fixed",
+            top: "90px",
+            bottom: "60px",
+            left: "6%",
+            right: "calc(var(--sidebar-width, 260px) + 6%)",
+            width: "auto",
+            height: "auto",
+            maxWidth: "none",
+            transform: "none",
+            borderRadius: "8px",
+          }}
           dir="rtl"
         >
-          <DialogHeader className="flex-shrink-0 flex flex-row items-center justify-between px-4 py-2.5 border-b border-border bg-slate-100 dark:bg-slate-800 rounded-t-lg">
+          <DialogHeader className="flex-shrink-0 flex flex-row items-center justify-between px-4 py-2.5 border-b border-border bg-slate-100 dark:bg-slate-800">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold text-slate-700 dark:text-slate-200">
               <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               {editId ? `تعديل بيانات الصنف${form.sku ? ` - ${form.sku}` : ""}` : "إضافة صنف جديد"}
@@ -1333,6 +1536,16 @@ export default function Products() {
                   ? "جارِ الحفظ..."
                   : editId ? "حفظ التعديلات" : "إضافة الصنف"}
               </Button>
+              <Button
+                variant="outline" size="icon"
+                className="h-8 w-8 shrink-0"
+                title={dialogSize === "full" ? "تصغير النافذة" : "تكبير النافذة"}
+                onClick={() => setDialogSize(s => s === "full" ? "compact" : "full")}
+              >
+                {dialogSize === "full"
+                  ? <Minimize2 className="w-3.5 h-3.5" />
+                  : <Maximize2 className="w-3.5 h-3.5" />}
+              </Button>
               <Button variant="outline" size="sm" className="h-8 gap-1" onClick={() => setIsOpen(false)}>
                 <X className="w-3.5 h-3.5" />
                 إغلاق
@@ -1346,6 +1559,7 @@ export default function Products() {
               setForm={setForm}
               categories={categories}
               groups={groups as any}
+              productId={editId}
             />
           </div>
         </DialogContent>

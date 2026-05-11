@@ -5,58 +5,76 @@ import { db } from '../db.js';
 import { salesInvoices, salesInvoiceItems, products, customers } from '../schema.js';
 
 export const salesRouter = router({
-  // قائمة الفواتير
+  // قائمة الفواتير/عروض الأسعار
   list: protectedProcedure
     .input(z.object({
       page: z.number().default(1),
       limit: z.number().default(50),
       search: z.string().optional(),
       status: z.string().optional(),
+      invoiceType: z.enum(['sale', 'return', 'quote']).optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
       const orgId = ctx.user.orgId;
-      return db.query.salesInvoices.findMany({
+      const allRecords = await db.query.salesInvoices.findMany({
         where: eq(salesInvoices.orgId, orgId),
         orderBy: [desc(salesInvoices.createdAt)],
-        limit: input?.limit || 50,
-        offset: ((input?.page || 1) - 1) * (input?.limit || 50),
       });
+      let filtered = allRecords;
+      if (input?.invoiceType) {
+        filtered = filtered.filter(r => r.invoiceType === input.invoiceType);
+      }
+      if (input?.status) {
+        filtered = filtered.filter(r => r.status === input.status);
+      }
+      if (input?.search) {
+        const q = input.search.toLowerCase();
+        filtered = filtered.filter(r =>
+          r.invoiceNumber?.toLowerCase().includes(q) ||
+          r.customerName?.toLowerCase().includes(q)
+        );
+      }
+      const limit = input?.limit || 50;
+      const page = input?.page || 1;
+      return filtered.slice((page - 1) * limit, page * limit);
     }),
 
-  // رقم الفاتورة التالي
-  nextNumber: protectedProcedure.query(async ({ ctx }) => {
-    const last = await db.query.salesInvoices.findFirst({
-      where: eq(salesInvoices.orgId, ctx.user.orgId),
-      orderBy: [desc(salesInvoices.id)],
-    });
-    if (!last) return 'INV-0001';
-    const num = parseInt(last.invoiceNumber.replace(/\D/g, '') || '0') + 1;
-    return `INV-${String(num).padStart(4, '0')}`;
-  }),
+  // رقم المستند التالي
+  nextNumber: protectedProcedure
+    .input(z.object({ prefix: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const prefix = input?.prefix || 'INV';
+      const last = await db.query.salesInvoices.findFirst({
+        where: eq(salesInvoices.orgId, ctx.user.orgId),
+        orderBy: [desc(salesInvoices.id)],
+      });
+      if (!last) return `${prefix}-0001`;
+      const num = parseInt(last.invoiceNumber.replace(/\D/g, '') || '0') + 1;
+      return `${prefix}-${String(num).padStart(4, '0')}`;
+    }),
 
-  // تفاصيل فاتورة
+  // تفاصيل مستند
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
       const invoice = await db.query.salesInvoices.findFirst({
         where: and(eq(salesInvoices.id, input.id), eq(salesInvoices.orgId, ctx.user.orgId)),
       });
-      if (!invoice) throw new Error('الفاتورة غير موجودة');
-      
+      if (!invoice) throw new Error('المستند غير موجود');
       const items = await db.query.salesInvoiceItems.findMany({
         where: eq(salesInvoiceItems.invoiceId, input.id),
         orderBy: (i, { asc }) => [asc(i.sortOrder)],
       });
-      
       return { ...invoice, items };
     }),
 
-  // إنشاء فاتورة
+  // إنشاء فاتورة/عرض سعر
   create: protectedProcedure
     .input(z.object({
       invoiceNumber: z.string(),
       invoiceType: z.enum(['sale', 'return', 'quote']).default('sale'),
       invoiceDate: z.string(),
+      dueDate: z.string().optional(),
       customerId: z.number().optional(),
       customerName: z.string().optional(),
       warehouseId: z.number().optional(),
@@ -89,14 +107,12 @@ export const salesRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { items, ...invoiceData } = input;
       const orgId = ctx.user.orgId;
-
       const [invoice] = await db.insert(salesInvoices).values({
         ...invoiceData,
         orgId,
         userId: ctx.user.id,
         invoiceDate: new Date(invoiceData.invoiceDate),
       }).returning();
-
       if (items.length > 0) {
         await db.insert(salesInvoiceItems).values(
           items.map((item, idx) => ({
@@ -107,11 +123,10 @@ export const salesRouter = router({
           }))
         );
       }
-
       return invoice;
     }),
 
-  // تعديل فاتورة
+  // تعديل مستند
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
@@ -143,13 +158,11 @@ export const salesRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, items, invoiceDate, ...rest } = input;
-      
       await db.update(salesInvoices).set({
         ...rest,
         ...(invoiceDate ? { invoiceDate: new Date(invoiceDate) } : {}),
         updatedAt: new Date(),
       }).where(and(eq(salesInvoices.id, id), eq(salesInvoices.orgId, ctx.user.orgId)));
-
       if (items) {
         await db.delete(salesInvoiceItems).where(eq(salesInvoiceItems.invoiceId, id));
         if (items.length > 0) {
@@ -163,14 +176,14 @@ export const salesRouter = router({
           );
         }
       }
-
       return { success: true };
     }),
 
-  // حذف فاتورة
+  // حذف مستند
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      await db.delete(salesInvoiceItems).where(eq(salesInvoiceItems.invoiceId, input.id));
       await db.delete(salesInvoices).where(
         and(eq(salesInvoices.id, input.id), eq(salesInvoices.orgId, ctx.user.orgId))
       );

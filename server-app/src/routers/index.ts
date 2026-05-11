@@ -5,7 +5,7 @@ import { usersRouter } from './users.js';
 import { salesRouter } from './sales.js';
 import { chatRouter } from './chat.js';
 import { db } from '../db.js';
-import { products, customers, suppliers, chartOfAccounts, warehouses, branches, units, productGroups, journalEntries, journalEntryLines, vouchers, inventory, stockVouchers, stockVoucherItems, inventoryCounts, inventoryCountItems } from '../schema.js';
+import { products, customers, suppliers, chartOfAccounts, warehouses, branches, units, productGroups, journalEntries, journalEntryLines, vouchers, inventory, stockVouchers, stockVoucherItems, inventoryCounts, inventoryCountItems, freeProducts } from '../schema.js';
 import { eq, and, desc, like, or, sql } from 'drizzle-orm';
 
 export const appRouter = router({
@@ -774,6 +774,72 @@ export const appRouter = router({
         };
       });
     }),
+  }),
+
+  // ─── الأصناف المجانية (Free Products / Offers) ──────────────────────────────
+  freeProducts: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.query.freeProducts.findMany({
+        where: and(eq(freeProducts.orgId, ctx.user.orgId), eq(freeProducts.isActive, true)),
+        orderBy: [desc(freeProducts.createdAt)],
+      });
+    }),
+    create: protectedProcedure
+      .input(z.object({
+        productId: z.number().optional(),
+        productCode: z.string().optional(),
+        productName: z.string().min(1),
+        unit: z.string().optional(),
+        baseQty: z.string().default('1'),
+        freeQty: z.string().default('1'),
+        offerStart: z.string().optional(),
+        offerEnd: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const [row] = await db.insert(freeProducts).values({
+          orgId: ctx.user.orgId,
+          productId: input.productId,
+          productCode: input.productCode,
+          productName: input.productName,
+          unit: input.unit,
+          baseQty: input.baseQty,
+          freeQty: input.freeQty,
+          offerStart: input.offerStart ? new Date(input.offerStart) : undefined,
+          offerEnd: input.offerEnd ? new Date(input.offerEnd) : undefined,
+          notes: input.notes,
+        }).returning();
+        return row;
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        productCode: z.string().optional(),
+        productName: z.string().optional(),
+        unit: z.string().optional(),
+        baseQty: z.string().optional(),
+        freeQty: z.string().optional(),
+        offerStart: z.string().optional(),
+        offerEnd: z.string().optional(),
+        notes: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, offerStart, offerEnd, ...rest } = input;
+        await db.update(freeProducts).set({
+          ...rest,
+          offerStart: offerStart ? new Date(offerStart) : undefined,
+          offerEnd: offerEnd ? new Date(offerEnd) : undefined,
+        } as any).where(and(eq(freeProducts.id, id), eq(freeProducts.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.update(freeProducts).set({ isActive: false } as any)
+          .where(and(eq(freeProducts.id, input.id), eq(freeProducts.orgId, ctx.user.orgId)));
+        return { success: true };
+      }),
   }),
 });
 

@@ -108,7 +108,7 @@ function App() {
     <ErrorBoundary>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider defaultTheme="dark">
+          <ThemeProvider defaultTheme="light">
             <TooltipProvider>
               <Toaster position="top-center" richColors />
               <Switch>
